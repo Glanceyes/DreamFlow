@@ -2,15 +2,14 @@ import random
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-import wandb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from diffusers import (
-    DDPMScheduler,
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     StableDiffusionPipeline,
+    StableDiffusionAdapterPipeline,
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
@@ -19,7 +18,6 @@ from diffusers.models.embeddings import TimestepEmbedding
 from diffusers.utils.import_utils import is_xformers_available
 
 import threestudio
-import numpy as np
 from threestudio.systems.utils import parse_optimizer
 from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseModule
@@ -234,9 +232,9 @@ class StableDiffusionAPFOGuidance(BaseModule):
         if self.cfg.use_lora:
             self.optimizer_lora = torch.optim.AdamW(
                 self.lora_layers.parameters(), 
-                lr=1e-4, weight_decay=0
+                lr=1e-4, weight_decay=1e-6
             )
-            
+
         threestudio.info(f"Loaded Stable Diffusion!")
 
     @torch.cuda.amp.autocast(enabled=False)
@@ -543,16 +541,11 @@ class StableDiffusionAPFOGuidance(BaseModule):
         w = ((self.sigmas[self.num_train_timesteps - 1 - t_prev] - self.sigmas[self.num_train_timesteps - 1 - t]) / (self.sigmas[self.num_train_timesteps - 1 - t] + 1e-9)).view(-1, 1, 1, 1)
 
         pred_original = self.scheduler.step(noise_pred_pretrain, t, latents_noisy).pred_original_sample
-        # prev_sample = self.scheduler.step(noise_pred_pretrain, t, latents_noisy).prev_sample
         original = self.scheduler_lora.step(noise_pred_est, t, latents_noisy).pred_original_sample if self.cfg.use_lora else latents
-        # prev_original = self.scheduler_lora.step(noise_pred_est, t, latents_noisy).prev_sample if self.cfg.use_lora else latents
-        
         self.scheduler._step_index = None
         self.scheduler_lora._step_index = None
 
         derivative = w * (pred_original - original)
-        # derivative = w * (prev_sample - prev_original)
-        
         grad = (t - t_prev).view(-1, 1, 1, 1) * derivative
 
         return grad
@@ -655,22 +648,12 @@ class StableDiffusionAPFOGuidance(BaseModule):
         if self.cfg.use_lora:
             self.optimizer_lora.zero_grad()
             
-            prev_lora_params = self.lora_layers.parameters()
-            prev_weight = np.concatenate([p.detach().cpu().numpy().flatten() for p in prev_lora_params])
-        
             loss_lora = self.train_lora(latents, t, text_embeddings, camera_condition)
-
             if loss_lora > 0:
                 loss_lora.backward()
 
             self.optimizer_lora.step()
             self.optimizer_lora.zero_grad()
-
-            curr_lora_params = self.lora_layers.parameters()
-            curr_weight = np.concatenate([p.detach().cpu().numpy().flatten() for p in curr_lora_params])
-            
-            wandb.log({"lora/weight_diff": np.linalg.norm(curr_weight - prev_weight)})
-            
 
         grad = self.compute_grad_apfo(
             latents, t, t_prev, text_embeddings_vd, text_embeddings, camera_condition

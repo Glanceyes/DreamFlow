@@ -4,12 +4,13 @@ import re
 import shutil
 
 import cv2
+import wandb
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
-import wandb
+
 from matplotlib import cm
 from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image, ImageDraw
@@ -64,6 +65,13 @@ class SaverMixin:
             return [self._wandb_logger]
         else:
             return []
+        
+    def init_wandb(self, cfg_loggers: DictConfig) -> None:
+        if "wandb" in cfg_loggers.keys() and cfg_loggers.wandb.enable:
+            wandb.init(
+                project=cfg_loggers.wandb.project,
+                name=cfg_loggers.wandb.name,
+            )
 
     DEFAULT_RGB_KWARGS = {"data_format": "HWC", "data_range": (0, 1)}
     DEFAULT_UV_KWARGS = {

@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import time
+import wandb
 import traceback
 
 

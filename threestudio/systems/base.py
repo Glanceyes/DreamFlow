@@ -46,6 +46,7 @@ class BaseSystem(pl.LightningModule, Updateable, SaverMixin):
         self._resumed_eval: bool = False
         self._resumed_eval_status: dict = {"global_step": 0, "current_epoch": 0}
         if "loggers" in cfg:
+            self.init_wandb(cfg.loggers)
             self.create_loggers(cfg.loggers)
 
         self.configure()
