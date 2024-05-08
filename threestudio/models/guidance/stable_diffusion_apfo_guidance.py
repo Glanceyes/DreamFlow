@@ -668,9 +668,6 @@ class StableDiffusionAPFOGuidance(BaseModule):
 
             curr_lora_params = self.lora_layers.parameters()
             curr_weight = np.concatenate([p.detach().cpu().numpy().flatten() for p in curr_lora_params])
-            
-            wandb.log({"lora/weight_diff": np.linalg.norm(curr_weight - prev_weight)})
-            
 
         grad = self.compute_grad_apfo(
             latents, t, t_prev, text_embeddings_vd, text_embeddings, camera_condition
